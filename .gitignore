@@ -155,6 +155,7 @@ cython_debug/
 data/
 cifar-10-batches-py/
 cifar-10-python.tar.gz
+.idea
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
