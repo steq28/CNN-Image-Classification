@@ -221,7 +221,7 @@ class Upgraded_CNN(nn.Module):
         # Initial dimensions of the images
         h_in, w_in = 32, 32
 
-        # First convolutional block: Conv - BatchNorm - Activ - Pool - Dropout
+        # First convolutional block: Conv - BatchNorm - Activ - Pool
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, padding=1)
         h_in, w_in = out_dimensions(self.conv1, h_in, w_in)
         self.bn1 = nn.BatchNorm2d(64)
@@ -231,7 +231,7 @@ class Upgraded_CNN(nn.Module):
         self.pool1 = nn.MaxPool2d(kernel_size=2)
         h_in, w_in = h_in // 2, w_in // 2
 
-        # Second convolutional block: Conv - BatchNorm - Activ - Pool - Dropout
+        # Second convolutional block: Conv - BatchNorm - Activ - Pool
         self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
         h_in, w_in = out_dimensions(self.conv3, h_in, w_in)
         self.bn3 = nn.BatchNorm2d(128)
@@ -241,7 +241,7 @@ class Upgraded_CNN(nn.Module):
         self.pool2 = nn.MaxPool2d(kernel_size=2)
         h_in, w_in = h_in // 2, w_in // 2
 
-        # Third convolutional block: Conv - BatchNorm - Activ - Pool - Dropout
+        # Third convolutional block: Conv - BatchNorm - Activ - Pool
         self.conv5 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
         h_in, w_in = out_dimensions(self.conv5, h_in, w_in)
         self.bn5 = nn.BatchNorm2d(256)
@@ -262,15 +262,14 @@ class Upgraded_CNN(nn.Module):
         # Output layer
         self.fc3 = nn.Linear(64, 10)
 
-        # Dropout layers definition for regularization
-        self.weak_dropout = nn.Dropout(0.2)
-        self.strong_dropout = nn.Dropout(0.4)
+        # Dropout layer definition for regularization
+        self.dropout = nn.Dropout(0.5)
 
         # Store final dimensions
         self.dimensions_final = (final_channels, h_in, w_in)
 
     def forward(self, x):
-        # First convolutional block: Conv - BatchNorm - Activ - Pool - Weak Dropout
+        # First convolutional block: Conv - BatchNorm - Activ - Pool
         x = self.conv1(x)
         x = self.bn1(x)
         x = F.gelu(x)
@@ -278,9 +277,8 @@ class Upgraded_CNN(nn.Module):
         x = self.bn2(x)
         x = F.gelu(x)
         x = self.pool1(x)
-        x = self.weak_dropout(x)
 
-        # Second convolutional block: Conv - BatchNorm - Activ - Pool - Weak Dropout
+        # Second convolutional block: Conv - BatchNorm - Activ - Pool
         x = self.conv3(x)
         x = self.bn3(x)
         x = F.gelu(x)
@@ -288,9 +286,8 @@ class Upgraded_CNN(nn.Module):
         x = self.bn4(x)
         x = F.gelu(x)
         x = self.pool2(x)
-        x = self.weak_dropout(x)
 
-        # Third convolutional block: Conv - BatchNorm - Activ - Pool - Weak Dropout
+        # Third convolutional block: Conv - BatchNorm - Activ - Pool
         x = self.conv5(x)
         x = self.bn5(x)
         x = F.gelu(x)
@@ -298,21 +295,20 @@ class Upgraded_CNN(nn.Module):
         x = self.bn6(x)
         x = F.gelu(x)
         x = self.pool3(x)
-        x = self.weak_dropout(x)
 
         n_channels, h, w = self.dimensions_final
         # Flatten the output for the fully connected layers
         x = x.view(-1, n_channels * h * w)
 
-        # 2 Fully connected layers: FC - BatchNorm - Activ - Strong Dropout
+        # 2 Fully connected layers: FC - BatchNorm - Activ - Dropout
         x = self.fc1(x)
         x = self.bn7(x)
         x = F.gelu(x)
-        x = self.strong_dropout(x)
+        x = self.dropout(x)
         x = self.fc2(x)
         x = self.bn8(x)
         x = F.gelu(x)
-        x = self.strong_dropout(x)
+        x = self.dropout(x)
 
         # Output layer
         x = self.fc3(x)
@@ -446,7 +442,7 @@ if __name__ == '__main__':
     seed = 42
     torch.manual_seed(seed)
     
-    batch_size = 40
+    batch_size = 32
 
     trainset_40 = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_augmented)
     train_loader_40 = torch.utils.data.DataLoader(trainset_40, batch_size=batch_size, shuffle=True, num_workers=2)
@@ -456,10 +452,10 @@ if __name__ == '__main__':
 
 
     model = Upgraded_CNN()
-    learning_rate = 0.031
+    learning_rate = 0.032
     second_model_epochs = 8
 
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=0.00001)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=0.0002)
     loss_fn = nn.CrossEntropyLoss()
 
     model = model.to(DEVICE)
