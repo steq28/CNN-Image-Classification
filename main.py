@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -8,7 +8,6 @@ import numpy as np
 import torchvision.datasets as datasets
 import torch.optim as optim
 import torch.nn.functional as F
-from math import floor
 
 """
 Plot a bar chart showing the distribution of classes in train and test sets.
@@ -37,7 +36,7 @@ def plot_distribution(y_train: List[int],
     plt.ylabel('Frequency')
     plt.legend()
     plt.title('Distribution of Classes in Train and Test Sets')
-    plt.show(block=False)
+    plt.show()
 
 """
 Compute the output dimensions of a convolutional layer.
@@ -86,9 +85,10 @@ Params:
     - train_loader: DataLoader for training data
     - validation_loader: DataLoader for validation data
     - test_loader: DataLoader for test data
-    - optimizer: Optimization algorithm
+    - optimizer: Optimizer
     - loss_fn: Loss function
     - device: Device to run training on (cpu/cuda/mps)
+    - print_every_n_batches: Print loss every N batches (optional)
 
 Returns:
     Lists of training and validation losses for each epoch
@@ -101,11 +101,43 @@ def train_model(model: torch.nn.Module,
                 test_loader: torch.utils.data.DataLoader,
                 optimizer: torch.optim.Optimizer,
                 loss_fn: torch.nn.Module,
-                device: torch.device):
+                device: torch.device,
+                print_every_n_batches: int = None):  # New parameter
     train_loss_list = []
     validation_loss_list = []
+    
+    def calculate_accuracy(loader):
+        n_correct = 0
+        n_samples = 0
+        # Set the model in evaluation mode
+        model.eval()
+        with torch.no_grad():
+            # Iterate over the loader to get data and targets
+            for data, target in loader:
+                data, target = data.to(device), target.to(device)
+                outputs = model(data)
+                # Get the predicted class by taking the index of the maximum value
+                _, predicted = torch.max(outputs.data, 1)
+                # Update the number of correct predictions and the number of samples
+                n_samples += target.size(0)
+                n_correct += (predicted == target).sum().item()
+        return 100.0 * n_correct / n_samples
+    
+    def calculate_validation_loss():
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for data, target in validation_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data)
+                # Compute the loss function
+                val_loss += loss_fn(output, target).item()
+        return val_loss / len(validation_loader)
+
     for epoch in range(n_epochs):
         loss_train = 0
+        batch_count = 0
+        
         for data, target in train_loader:
             # Set the model in training mode
             model.train()
@@ -121,43 +153,65 @@ def train_model(model: torch.nn.Module,
             loss.backward()
             # Update parameters
             optimizer.step()
+            
+            batch_count += 1
+            
+            # Print every N batches if specified
+            if print_every_n_batches and batch_count % print_every_n_batches == 0:
+                current_train_loss = loss_train / batch_count
+                validation_loss = calculate_validation_loss()
+                train_acc = calculate_accuracy(train_loader)
+                val_acc = calculate_accuracy(validation_loader)
+                print(f"Epoch {epoch + 1}, Batch {batch_count}:")
+                print(f"Train loss: {current_train_loss:.4f}, Validation loss: {validation_loss:.4f}")
+                print(f"Train accuracy: {train_acc:.2f}%, Validation accuracy: {val_acc:.2f}%")
+                
+        # Calculate average training loss for the epoch
         loss_train = loss_train / len(train_loader)
         train_loss_list.append(loss_train)
-
-        # At the end of every epoch, check the validation loss value
-        with torch.no_grad():
-            model.eval()
-            for data, target in validation_loader: # Just one batch
-                data, target = data.to(device), target.to(device)
-                # Make a prediction
-                output = model(data)
-                # Compute the loss function
-                validation_loss = loss_fn(output, target).item()
-        print(f"Epoch {epoch + 1}: Train loss: {loss_train}, Validation loss {validation_loss}")
+        
+        # Calculate validation loss
+        validation_loss = calculate_validation_loss()
         validation_loss_list.append(validation_loss)
         
-        with torch.no_grad():
-            n_correct = 0
-            n_samples = 0
-            for data, target in test_loader:
-                data, target = data.to(device), target.to(device)
-                outputs = model(data)
-                _, predicted = torch.max(outputs.data, 1)
-                n_samples += target.size(0)
-                n_correct += (predicted == target).sum().item()
-
-            acc = 100.0 * n_correct / n_samples
-        print("Accuracy on the test set:", acc, "%")
+        # Print epoch results if not printing batch-wise
+        if not print_every_n_batches:
+            train_acc = calculate_accuracy(train_loader)
+            val_acc = calculate_accuracy(validation_loader)
+            print(f"Epoch {epoch + 1}:")
+            print(f"Train loss: {loss_train:.4f}, Validation loss: {validation_loss:.4f}")
+            print(f"Train accuracy: {train_acc:.2f}%, Validation accuracy: {val_acc:.2f}%")
+            
+        # Calculate and print test accuracy at the end of each epoch
+        test_acc = calculate_accuracy(test_loader)
+        print(f"Test accuracy: {test_acc:.2f}%")
+        
     return train_loss_list, validation_loss_list
 
-def plot_loss(train_loss, validation_loss, epochs):
+"""
+Plot the training and validation loss values.
+
+Params:
+    - train_loss: List of training loss values
+    - validation_loss: List of validation loss values
+    - epochs: Number of epochs
+    - title: Plot title
+"""
+
+def plot_loss(train_loss: List[float], 
+              validation_loss: List[float], 
+              epochs: int, 
+              title: str):
     plt.figure()
     plt.plot(range(epochs), train_loss)
     plt.plot(range(epochs), validation_loss)
     plt.legend(["Train loss", "Validation Loss"])
     plt.xlabel("Epochs")
     plt.ylabel("Loss value")
-    plt.show(block=False)
+    plt.title(title)
+    plt.show()
+
+# Define the Simple_CNN model
 
 class Simple_CNN(nn.Module):
     def __init__(self):
@@ -213,6 +267,8 @@ class Simple_CNN(nn.Module):
         x = self.fc3(x)
 
         return x
+    
+# Define the Upgraded_CNN model
 
 class Upgraded_CNN(nn.Module):
     def __init__(self):
@@ -259,17 +315,17 @@ class Upgraded_CNN(nn.Module):
         self.fc2 = nn.Linear(128, 64)
         self.bn8 = nn.BatchNorm1d(64)
 
-        # Output layer
+        # Output layer (Fully connected layer)
         self.fc3 = nn.Linear(64, 10)
 
         # Dropout layer definition for regularization
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(0.55)
 
         # Store final dimensions
         self.dimensions_final = (final_channels, h_in, w_in)
 
     def forward(self, x):
-        # First convolutional block: Conv - BatchNorm - Activ - Pool
+        # First convolutional block: Conv - BatchNorm - Activ - Conv - BatchNorm - Activ - Pool
         x = self.conv1(x)
         x = self.bn1(x)
         x = F.gelu(x)
@@ -278,7 +334,7 @@ class Upgraded_CNN(nn.Module):
         x = F.gelu(x)
         x = self.pool1(x)
 
-        # Second convolutional block: Conv - BatchNorm - Activ - Pool
+        # Second convolutional block: Conv - BatchNorm - Activ - Conv - BatchNorm - Activ - Pool
         x = self.conv3(x)
         x = self.bn3(x)
         x = F.gelu(x)
@@ -287,7 +343,7 @@ class Upgraded_CNN(nn.Module):
         x = F.gelu(x)
         x = self.pool2(x)
 
-        # Third convolutional block: Conv - BatchNorm - Activ - Pool
+        # Third convolutional block: Conv - BatchNorm - Activ - Conv - BatchNorm - Activ - Pool
         x = self.conv5(x)
         x = self.bn5(x)
         x = F.gelu(x)
@@ -316,15 +372,15 @@ class Upgraded_CNN(nn.Module):
         return x
 
 if __name__ == '__main__':
+
+    # Set the seed for reproducibility
     seed = 42
     torch.manual_seed(seed)
     
     '''
     Q4 - Code
     '''
-
-    batch_size = 32
-
+    # Define the transformations for the images, with normalization only and with augmentation (for the second model)
     transform_normalize_only = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=0, std=1),
@@ -337,34 +393,37 @@ if __name__ == '__main__':
         transforms.Normalize(mean=0, std=1),
     ])
 
-    trainset_32 = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_normalize_only)
-    train_loader_32 = torch.utils.data.DataLoader(trainset_32, batch_size=batch_size, shuffle=True, num_workers=2)
+    # Load the CIFAR-10 dataset and create the loaders, for the first model
+    batch_size = 32
+
+    trainset_first_model = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_normalize_only)
+    train_loader_first_model = torch.utils.data.DataLoader(trainset_first_model, batch_size=batch_size, shuffle=True, num_workers=2)
 
     testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_normalize_only)
 
     '''
     Q5 - Code
     '''
+    # Split the test set into validation and test sets
     dataset_validation, dataset_test = torch.utils.data.random_split(testset, [0.5, 0.5])
 
-    validation_loader_32 = torch.utils.data.DataLoader(dataset_validation, batch_size=batch_size, shuffle=True, num_workers=2)
-    test_loader_32 = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size, shuffle=False, num_workers=2)
-
+    validation_loader_first_model = torch.utils.data.DataLoader(dataset_validation, batch_size=batch_size, shuffle=True, num_workers=2)
+    test_loader_first_model = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size, shuffle=False, num_workers=2)
 
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
 
     '''
     Q2 - Code
     '''
-
-    data_iterable = iter(train_loader_32)
+    # Get one batch of images and labels from the train loader for creating the plot
+    data_iterable = iter(train_loader_first_model)
     images, labels = next(data_iterable)
 
     # Save one image per class
     unique_class_images = {}
     num_images = len(images)
 
+    # Iterate over the images for getting one image per class
     for i in range(num_images):
         label = labels[i].item()
         if label not in unique_class_images:
@@ -374,11 +433,12 @@ if __name__ == '__main__':
         if len(unique_class_images) == len(classes):
             break
 
-    # Plot the images
+    # Create the plot
     fig = plt.figure(figsize=(12, 4))
+    plt.title("One image per class sample")
     idx = 1
 
-    # Plot each saved imag
+    # Iterate over the unique images found
     for label in unique_class_images:
         img = unique_class_images[label]
         
@@ -389,27 +449,31 @@ if __name__ == '__main__':
         
         idx += 1
 
-    plt.show(block=False)
+    
+    plt.show()
 
-
-    plot_distribution(trainset_32.targets, testset.targets, classes)
+    # Plot the distribution of classes in the train and test sets
+    plot_distribution(trainset_first_model.targets, testset.targets, classes)
 
     '''
     Q3 - Code
     '''
 
+    # Create a dataset without transformations
     dataset_train_not_tranformed = datasets.CIFAR10('.', train=True, download=True)
 
+    # Check the type of the first entry without transformation
     entry = dataset_train_not_tranformed[0]
     print("Entry type:", type(entry[0]))
 
-    entry = trainset_32[0]
+    # Check the type of the first entry after transformation
+    entry = trainset_first_model[0]
     print("Entry type after transformation:", type(entry[0]), "Tensor shape:", entry[0].shape, "Class:", entry[1])
 
     '''
     Q6 - Code
     '''
-
+    # Initialize the model, optimizer and loss function
     simple_model = Simple_CNN()
     simple_learning_rate = 0.032
     first_model_epochs = 4
@@ -427,48 +491,59 @@ if __name__ == '__main__':
     '''
     Q7 - Code
     '''
-
-    train_loss, validation_loss = train_model(simple_model, first_model_epochs, train_loader_32, validation_loader_32, test_loader_32, simple_optimizer, simple_loss_fn, DEVICE)
+    # Train the model
+    print("Training the simple model")
+    train_loss, validation_loss = train_model(simple_model, first_model_epochs, train_loader_first_model, validation_loader_first_model, test_loader_first_model, simple_optimizer, simple_loss_fn, DEVICE, 500)
 
     '''
     Q8 - Code
     '''
-    plot_loss(train_loss, validation_loss, first_model_epochs)
+    # Plot the loss values
+    plot_loss(train_loss, validation_loss, first_model_epochs, "Simple CNN Model Loss")
     
 
     '''
     Q9 - Code
     '''
+    # Set again the seed for reproducibility, due to some issue during my tests
     seed = 42
     torch.manual_seed(seed)
     
+    # Create the loaders for the second model, using the augmented transformation
     batch_size = 32
 
-    trainset_40 = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_augmented)
-    train_loader_40 = torch.utils.data.DataLoader(trainset_40, batch_size=batch_size, shuffle=True, num_workers=2)
+    trainset_second_model = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_augmented)
+    train_loader_second_model = torch.utils.data.DataLoader(trainset_second_model, batch_size=batch_size, shuffle=True, num_workers=2)
 
-    validation_loader_40 = torch.utils.data.DataLoader(dataset_validation, batch_size=batch_size, shuffle=True, num_workers=2)
-    test_loader_40 = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size, shuffle=False, num_workers=2)
+    validation_loader_second_model = torch.utils.data.DataLoader(dataset_validation, batch_size=batch_size, shuffle=True, num_workers=2)
+    test_loader_second_model = torch.utils.data.DataLoader(dataset_test, batch_size=batch_size, shuffle=False, num_workers=2)
 
-
+    # Initialize the model, optimizer and loss function
     model = Upgraded_CNN()
-    learning_rate = 0.032
+    learning_rate = 0.03
     second_model_epochs = 8
 
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=0.0002)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=0.0003)
     loss_fn = nn.CrossEntropyLoss()
 
     model = model.to(DEVICE)
 
-    train_loss, validation_loss = train_model(model, second_model_epochs, train_loader_40, validation_loader_40, test_loader_40, optimizer, loss_fn, DEVICE)
-    plot_loss(train_loss, validation_loss, second_model_epochs)
-    plt.show()
+    # Train the model
+    print("Training the upgraded model")
+    train_loss, validation_loss = train_model(model, second_model_epochs, train_loader_second_model, validation_loader_second_model, test_loader_second_model, optimizer, loss_fn, DEVICE)
+
+    # Plot the loss values
+    plot_loss(train_loss, validation_loss, second_model_epochs, "Upgraded CNN Model Loss")
+    
     '''
     Q10 - Code
     '''
+    # Iterate over different seeds
     for seed in range(5,10):
         torch.manual_seed(seed)
         print("Seed equal to ", torch.random.initial_seed())
-        
+        # To avoid transfer learning, I reinitialize the model every seed
         simple_model = Simple_CNN()
-        train_model(simple_model, first_model_epochs, train_loader_32, validation_loader_32, test_loader_32, simple_optimizer, simple_loss_fn, DEVICE)
+        simple_model = simple_model.to(DEVICE)
+        simple_optimizer = optim.SGD(simple_model.parameters(), lr=simple_learning_rate)
+        train_model(simple_model, first_model_epochs, train_loader_first_model, validation_loader_first_model, test_loader_first_model, simple_optimizer, simple_loss_fn, DEVICE)
