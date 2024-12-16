@@ -393,7 +393,7 @@ if __name__ == '__main__':
         transforms.Normalize(mean=0, std=1),
     ])
 
-    # Load the CIFAR-10 dataset and create the loaders, for the first model
+    # Load the CIFAR-10 dataset and create the loaders for the first model
     batch_size = 32
 
     trainset_first_model = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_normalize_only)
